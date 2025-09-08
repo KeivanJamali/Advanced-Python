@@ -1092,7 +1092,7 @@ class DataLLM:
         Shows a progress bar with tqdm.
         """
         semaphore = asyncio.Semaphore(10)
-        items = [(5, 197)]
+        items = [(11, 17)]
         queries = []
         for k in items:
             message = self.data_loader.get_llm_input(str(k[0]), str(k[1]))

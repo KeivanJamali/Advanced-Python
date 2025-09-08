@@ -1,8 +1,3 @@
-"""
-This module provides the main simulation engine for a traffic management system.
-It handles vehicle generation, traffic light control, and overall simulation flow.
-"""
-
 import simpy
 import Players
 import pandas as pd

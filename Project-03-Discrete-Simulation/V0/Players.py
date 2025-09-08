@@ -1,8 +1,3 @@
-"""
-This module implements the core traffic simulation entities: lanes, intersections, and vehicles.
-It provides classes for managing road segments, traffic lights, and vehicle behaviors.
-"""
-
 import simpy
 import networkx as nx
 import pandas as pd

@@ -1,28 +1,31 @@
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, HumanMessagePromptTemplate, SystemMessagePromptTemplate
 
 
-prompt_to_grade = ChatPromptTemplate([("system", """
-## **Task**
+system_message = SystemMessagePromptTemplate.from_template("""
+You are an expert evaluator of university support conversations in Persian.  
+The conversation may have missing or unclear messages. Your task is to:
 
-You will be given a **conversation text**. Extract the required parameters and report them in the specified JSON format.
-
----
-## **Context**
-
-- There are **3 roles** in the conversation:
+1. Identify the **student’s main question** (in Persian). If missing, infer it from context.
     
-    - **student** → asks questions.
-        
-    - **hami** → responds directly or forwards the question to the correct employee.
-        
-    - **employee** → provides answers.
+2. Provide **numeric ratings** for each category below:
+- **done**: How well the student’s question was answered (0–5).
+- **completeness**: How clear, transparent, and complete was Hami’s response (1–5).
+- **tone**: How professional, respectful, and compassionate was Hami (1–5).
+- **start_grade**: Quality of Hami’s first reply to the student (1–5).
+- **student_feedback**: How satisfied the student seems with the process and final answer (1–5). If no explicit feedback is given, assign a neutral value (3).
 
-    - **someone** → could be **hami** or **employee** or **student**.
+**Important rules:**
+- Always write the extracted question in Persian.
+- Ratings must strictly follow the allowed ranges.
+- If data is missing, infer reasonably from context.    
+- Always return a valid JSON object compatible with the `FinalOutput` schema.
+   
+""")
 
-- **Focus**: Evaluate only the **hami’s performance**.
-"""),
-                                        ("user", "{messages}")],
-                                        input_variables=["messages"],
-                                        validate_template=True,
-                                        metadata={"name": "grade messages"})
+human_message = HumanMessagePromptTemplate.from_template("{messages}")
+
+prompt_to_grade = ChatPromptTemplate(messages=[system_message, human_message],
+                                     input_variables=["messages"],
+                                     validate_template=True,
+                                     metadata={"name": "grade messages"})
 

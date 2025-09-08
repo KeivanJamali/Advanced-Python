@@ -3,7 +3,7 @@ from LLM_combined.prompts import *
 from LLM_combined.schema import FinalOutput
 
 
-llm = init_chat_model(model="openai:gpt-4.1-nano", temperature=0)
+llm = init_chat_model(model="openai:gpt-5-nano")
 chain = prompt_to_grade | llm.with_structured_output(FinalOutput)
 
 # res = chain.invoke("سلام. خوبی؟")

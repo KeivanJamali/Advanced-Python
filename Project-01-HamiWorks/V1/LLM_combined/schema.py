@@ -1,16 +1,30 @@
-from typing import List, Annotated
-from typing_extensions import TypedDict
-from langchain_core.messages import BaseMessage
-from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
 
-
 class FinalOutput(BaseModel):
-    """Find the grading of the hamis."""
-    question: str = Field(description="The main question asked by the student.")
-    done: str = Field(description="Rate student questions from 1 to 5: 1 = not answered, 2 = barely addressed, 3 = partially answered, 4 = mostly answered, 5 = fully answered. If the question is unclear, respond 'not-clear-question'.")
-    completeness: int = Field(description="How clear, transparent, and complete was hami’s response?(from 1(bad) to 5(Excellent))")
-    tone: int = Field(description="How professional, respectful, and compassionate was hami?(from 1(bad) to 5(Excellent))")
-    start_grade: int = Field(description="Quality of hami’s first reply to the student.(from 1(bad) to 5(Excellent))")
-    student_feedback: int = Field(description="How well hami handled student’s feedback (if present).(from 1(bad) to 5(Excellent))")
+    """Evaluation of Hami's handling of the student request conversation."""
 
+    question: str = Field(
+        description="The main question asked by the student, inferred if missing. Write in Persian."
+    )
+    done: int = Field(
+        description="How well the student’s question was answered. \
+0 = totally unclear or missing question, \
+1 = barely answered, \
+2 = partial answer, \
+3 = moderate answer, \
+4 = good answer, \
+5 = excellent answer."
+    )
+    completeness: int = Field(
+        description="How clear, transparent, and complete was Hami’s response? (1 = bad, 5 = excellent)"
+    )
+    tone: int = Field(
+        description="How professional, respectful, and compassionate was Hami? (1 = bad, 5 = excellent)"
+    )
+    start_grade: int = Field(
+        description="Quality of Hami’s first reply to the student. (1 = bad, 5 = excellent)"
+    )
+    student_feedback: int = Field(
+        description="How satisfied the student seems with the process and final answer. \
+(1 = very dissatisfied, 5 = very satisfied). If no feedback is given, rate as neutral (3)."
+    )
