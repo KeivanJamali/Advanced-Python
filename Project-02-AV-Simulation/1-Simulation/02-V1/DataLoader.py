@@ -1,8 +1,3 @@
-"""
-This module handles the creation and management of the traffic network graph.
-It loads network data, generates travel time functions, and creates intersections.
-"""
-
 import pandas as pd
 import networkx as nx
 import matplotlib.pyplot as plt
@@ -11,43 +6,6 @@ import sympy as sp
 
 
 class Graph_Generator:
-    """A class that generates and manages the traffic network graph.
-    
-    This class is responsible for:
-    - Loading network topology from CSV files
-    - Creating a directed graph with intersections
-    - Computing travel time functions for edges
-    - Visualizing the network
-    
-    Attributes:
-        network_data (pd.DataFrame): Raw network data with columns:
-            - from: Source intersection ID
-            - to: Target intersection ID
-            - length: Road segment length
-        pos (pd.DataFrame): Node position data with columns:
-            - Node: Intersection ID
-            - X: X-coordinate
-            - Y: Y-coordinate
-        graph (nx.DiGraph): NetworkX directed graph representing the road network
-            Node attributes:
-                - intersection: Intersection object
-            Edge attributes:
-                - length: Road segment length
-                - param: Sympy symbol for travel time function
-                - expr: Travel time function expression
-    
-    Example:
-        >>> # Create network with 500m dedicated lanes and change zones
-        >>> network = Graph_Generator(
-        ...     network_files=['network.csv', 'positions.txt'],
-        ...     dedicated_lane_length=500,
-        ...     lane_changing_zone_length=500,
-        ...     each_block_length=100
-        ... )
-        >>> # Visualize the network
-        >>> network.draw()
-    """
-    
     def __init__(self, network_files: list, 
                  dedicated_lane_length: int, 
                  lane_changing_zone_length: int,
@@ -72,8 +30,8 @@ class Graph_Generator:
             self.graph.add_edge(str(row["from"]), str(row["to"]), length=row["length"], param=x, expr=expr)
 
         for node in self.graph.nodes:
-            neighbors = list(self.graph.neighbors(node))
-            lengths = [self.graph[node][nbr].get("length", 1) for nbr in neighbors]
+            neighbors = list(self.graph.predecessors(node))
+            lengths = [self.graph[nbr][node].get("length", 1) for nbr in neighbors]
             self.graph.nodes[node]["intersection"] = Intersection(node_id=str(node),
                                                                   neighbors=neighbors,
                                                                   lengths=lengths,

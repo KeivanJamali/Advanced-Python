@@ -1,45 +1,8 @@
-"""
-This module implements the core traffic simulation entities: lanes, intersections, and vehicles.
-It provides classes for managing road segments, traffic lights, and vehicle behaviors.
-"""
-
 import simpy
 import networkx as nx
 import pandas as pd
 
 class Lane:
-    """Represents a single lane in a road segment.
-    
-    A lane is a part of a road segment that can contain vehicles. Each road segment
-    has 5 lanes (numbered 0-4), where:
-    - Lanes 0-2 are regular lanes (green=True)
-    - Lanes 3-4 are dedicated AV lanes (blue=True)
-    
-    Each lane is divided into blocks, where vehicles can occupy positions.
-    
-    Attributes:
-        id (str): Lane identifier (0-4)
-        blue (bool): True if this is an AV lane (id > 2)
-        green (bool): True if this is a regular lane (id <= 2)
-        blocks (int): Number of blocks in this lane
-        dedicated_lane_length (int): Length of AV-only section in blocks
-        lane_changing_zone_length (int): Length of lane changing section in blocks
-        path (dict): Maps block numbers to vehicle counts (0 = empty)
-    
-    Example:
-        >>> # Create a lane with 10 blocks and 3-block AV and changing zones
-        >>> lane = Lane(
-        ...     id="3",             # AV lane
-        ...     blocks=10,          # Total length
-        ...     dedicated_lane_length=3,
-        ...     lane_changing_zone_length=3
-        ... )
-        >>> lane.is_available(5)    # Check if block 5 is available
-        True
-        >>> lane.arrive(5)          # Vehicle arrives at block 5
-        >>> lane.leave(5)           # Vehicle leaves block 5
-    """
-    
     def __init__(self, 
                  id: str,
                  blocks: int,
@@ -92,34 +55,6 @@ class Lane:
 
 
 class Intersection:
-    """Represents a road intersection with multiple approaching lanes and traffic lights.
-    
-    An intersection manages:
-    - Multiple approaching road segments (one per neighbor)
-    - 5 lanes per approaching road segment
-    - Traffic lights for each lane
-    - Light control strategy based on vehicle density
-    
-    Attributes:
-        node_id (str): Unique identifier for this intersection
-        lanes (dict): Maps neighbor IDs to lists of Lane objects
-        lights (dict): Maps neighbor IDs to lists of light states ("red"/"green")
-    
-    Example:
-        >>> # Create an intersection with two approaching roads
-        >>> intersection = Intersection(
-        ...     node_id="1",
-        ...     neighbors=["2", "3"],
-        ...     lengths=[1000, 800],
-        ...     dedicated_lane_length=500,
-        ...     lane_changing_zone_length=500,
-        ...     each_block_length=100
-        ... )
-        >>> # Access lanes and lights for a specific approach
-        >>> lanes_to_node_2 = intersection.lanes["2"]
-        >>> lights_to_node_2 = intersection.lights["2"]
-    """
-    
     def __init__(self,
                  node_id: str,
                  neighbors: list,
@@ -154,6 +89,7 @@ class Intersection:
                     lane_changing_zone_length=int(lane_changing_zone_length/each_block_length)
                 ))
                 self.lights[str(neighbors[i])].append("red")  # All lights start red
+        # print(f"[INFO] Intersection {self.node_id} initialized with these lanes: {self.lanes}.")
 
     def update_lights(self, stats):
         """Update traffic light states based on comparing blue lanes (3,4) vs green lanes (0,1,2).
@@ -196,28 +132,29 @@ class Intersection:
             # print(f"[DEBUG] Checking neighbor {neighbor}...")
             # Count blue lanes (3,4)
             blue_vehicles = active_vehicles[
-                (active_vehicles['destination'] == neighbor) & 
-                (active_vehicles['origin'] == node_id) &
+                (active_vehicles['destination'] == node_id) & 
+                (active_vehicles['origin'] == neighbor) &
                 (active_vehicles['lane'].isin(['3', '4']))
             ]
-            total_blue_lanes += self.find_in_queue_vehicles_from_lane(blue_vehicles, [node_id, neighbor])
+            total_blue_lanes += self.find_in_queue_vehicles_from_lane(blue_vehicles, [neighbor, node_id])
             # print(f"[DEBUG] Blue vehicles: {len(blue_vehicles)}")
 
             # Count green lanes (0,1,2)
             green_vehicles = active_vehicles[
-                (active_vehicles['destination'] == neighbor) & 
-                (active_vehicles['origin'] == node_id) &
+                (active_vehicles['destination'] == node_id) & 
+                (active_vehicles['origin'] == neighbor) &
                 (active_vehicles['lane'].isin(['0', '1', '2']))
             ]
             # print(f"[DEBUG] Green vehicles: {len(green_vehicles)}")
-            green_v = self.find_in_queue_vehicles_from_lane(green_vehicles, [node_id, neighbor])
+            green_v = self.find_in_queue_vehicles_from_lane(green_vehicles, [neighbor, node_id])
             total_green_lanes += green_v
             direction_green_counts[neighbor] = green_v
 
             # First set all lights to red
             for i in range(5):
                 self.lights[neighbor][i] = "red"
-        
+
+        # print(f"[DEBUG] Total blue lanes: {total_blue_lanes}, Total green lanes: {total_green_lanes}, Direction green counts: {direction_green_counts}")
         # If blue lanes have more vehicles
         if total_blue_lanes > total_green_lanes:
             # Set all blue lanes to green in all directions
@@ -238,61 +175,19 @@ class Intersection:
         # print(f"[INFO] Traffic lights at node {self.node_id} updated: {self.lights}.")
 
     def find_in_queue_vehicles_from_lane(self, vehicles: pd.DataFrame, od: list):
-        vehicles = vehicles.sort_values(by=["block"], inplace=False)
-        blocks = vehicles["block"].values
-        count = 0
-        current = self.lanes[str(od[1])][0].blocks - 1
-        while current in blocks:
-            count += 1
-            current -= 1
-        return count
+        if not vehicles.empty:
+            vehicles = vehicles.sort_values(by=["block"], inplace=False)
+            blocks = vehicles["block"].values
+            count = 0
+            current = self.lanes[str(od[0])][0].blocks - 1
+            while current in blocks:
+                count += 1
+                current -= 1
+            return count
+        else:
+            return 0
 
 class Vehicle:
-    """Represents a vehicle in the traffic simulation.
-    
-    Vehicles can be either Human-Driven Vehicles (HDV) or Autonomous Vehicles (AV).
-    Each vehicle:
-    - Follows a path through the network
-    - Occupies lanes and blocks
-    - Makes decisions about lane changes
-    - Responds to traffic lights
-    - Updates its status in the simulation statistics
-    
-    The vehicle's behavior changes based on its position in the road segment:
-    1. Simple process: Far from intersection
-    2. Lane changing process: Approaching intersection
-    3. End process: Close to intersection
-    4. Intersection process: At intersection
-    
-    Attributes:
-        env (simpy.Environment): Simulation environment
-        id (str): Unique vehicle identifier
-        AV (bool): True if autonomous vehicle
-        HDV (bool): True if human-driven vehicle
-        stats (pd.DataFrame): Simulation statistics
-        track (int): Debug tracking level (0 = no tracking)
-        current_path (list): [current_node, next_node]
-        current_intersection (Intersection): Current intersection
-        current_lane (Lane): Current lane
-        current_pos (int): Current block position
-        max_pos (int): Maximum block position in current lane
-        arrival_time (float): Time arrived at current position
-        stucked_time (float): Time spent stuck
-    
-    Example:
-        >>> # Create an AV starting at intersection 1, heading to 2
-        >>> vehicle = Vehicle(
-        ...     env=env,
-        ...     id="1",
-        ...     initial_path=["1", "2"],
-        ...     initial_lane="3",  # AV lane
-        ...     type_="AV",
-        ...     stats=stats,
-        ...     graph=graph,
-        ...     track=1  # Enable tracking
-        ... )
-    """
-    
     def __init__(self,
                  env: simpy.Environment,
                  id: str,
@@ -323,8 +218,8 @@ class Vehicle:
         self.initial_path = initial_path
         self.graph = graph
         self.current_path: list = self._shortest_path(str(self.initial_path[0]), str(self.initial_path[1])) # [start node, end node]
-        self.current_intersection: Intersection = self.graph.graph.nodes[str(self.current_path[0])]["intersection"]
-        self.current_lane: Lane = self.current_intersection.lanes[self.current_path[1]][int(initial_lane)]
+        self.current_intersection: Intersection = self.graph.graph.nodes[str(self.current_path[1])]["intersection"]
+        self.current_lane: Lane = self.current_intersection.lanes[self.current_path[0]][int(initial_lane)]
         self.arrival_time = self.env.now
         self.stucked_time = 0
         self.current_pos: int = 0
@@ -377,7 +272,7 @@ class Vehicle:
         """
         # Mark previous position as inactive
         self.stats.loc[self.stats["vehicle_id"] == self.id, "active"] = False
-        light = self.current_intersection.lights[self.current_path[1]][self.current_lane.id]
+        light = self.current_intersection.lights[self.current_path[0]][self.current_lane.id]
         light = "none" if self.current_pos != self.max_pos else light
         # Add new row with current state
         self.stats.loc[len(self.stats)] = [
@@ -443,7 +338,7 @@ class Vehicle:
         Note:
             This is a private method used internally by movement methods.
         """
-        self.current_lane = self.current_intersection.lanes[self.current_path[1]][new_lane]
+        self.current_lane = self.current_intersection.lanes[self.current_path[0]][new_lane]
         self._update_stats()
         if self.track:
             print(f"[TRACK{self.track}] Updating lane...")
@@ -468,7 +363,7 @@ class Vehicle:
             print(f"[TRACK{self.track}] Try to go to 'left'...")
             
         # Check if target position is available
-        target_lane = self.current_intersection.lanes[self.current_path[1]][int(self.current_lane.id)-1]
+        target_lane = self.current_intersection.lanes[self.current_path[0]][int(self.current_lane.id)-1]
         if target_lane.is_available(block=self.current_pos+1):
             self.current_lane.leave(block=self.current_pos)
             self._update_lane(new_lane=int(self.current_lane.id)-1)
@@ -503,7 +398,7 @@ class Vehicle:
             print(f"[TRACK{self.track}] Try to go to 'right'...")
             
         # Check if target position is available
-        target_lane = self.current_intersection.lanes[self.current_path[1]][int(self.current_lane.id)+1]
+        target_lane = self.current_intersection.lanes[self.current_path[0]][int(self.current_lane.id)+1]
         if target_lane.is_available(block=self.current_pos+1):
             self.current_lane.leave(block=self.current_pos)
             self._update_lane(new_lane=int(self.current_lane.id)+1)
@@ -728,7 +623,7 @@ class Vehicle:
             This is a private method used when vehicle reaches an intersection.
         """
         # Check if light is green for current lane
-        if self.current_intersection.lights[self.current_path[1]][self.current_lane.id] == "green":
+        if self.current_intersection.lights[self.current_path[0]][self.current_lane.id] == "green":
             self._pass_intersection()
         else:
             self._stay_intersection()
@@ -746,6 +641,7 @@ class Vehicle:
         Note:
             This is a private method used when crossing intersection on green light.
         """
+        self._update_stats()
         # Leave current position
         self.current_lane.leave(block=self.current_pos)
         
@@ -756,8 +652,8 @@ class Vehicle:
         )
         
         # Update intersection and lane
-        self.current_intersection = self.graph.graph.nodes[str(self.current_path[0])]["intersection"]
-        self.current_lane = self.current_intersection.lanes[self.current_path[1]][int(self.current_lane.id)]
+        self.current_intersection = self.graph.graph.nodes[str(self.current_path[1])]["intersection"]
+        self.current_lane = self.current_intersection.lanes[self.current_path[0]][int(self.current_lane.id)]
         
         # Enter new road segment
         self.current_lane.arrive(block=0)
@@ -767,7 +663,6 @@ class Vehicle:
         self.stucked_time = 0
         self.current_pos = 0
         self.max_pos = self.current_lane.blocks - 1
-        self._update_stats()
         if self.track:
             print(f"[TRACK{self.track}] Passing the intersection...")
             print(f"[TRACK{self.track}] [ID={self.id}] [path={self.current_path[0]} to {self.current_path[1]}] [lane={self.current_lane.id}] [block={self.current_pos}] [arrive_time={self.arrival_time}] [stuck_time={self.stucked_time}]")

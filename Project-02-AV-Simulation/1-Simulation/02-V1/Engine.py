@@ -1,8 +1,3 @@
-"""
-This module provides the main simulation engine for a traffic management system.
-It handles vehicle generation, traffic light control, and overall simulation flow.
-"""
-
 import simpy
 import Players
 import pandas as pd
@@ -11,43 +6,6 @@ from tqdm.auto import tqdm
 from pathlib import Path
 
 class Clock:
-    """A simulation clock that manages the traffic simulation environment.
-    
-    This class serves as the main controller for the traffic simulation. It manages:
-    - The simulation environment (simpy)
-    - Vehicle generation and tracking
-    - Traffic statistics
-    - Network graph representation
-    - Traffic light control
-    
-    Attributes:
-        env (simpy.Environment): The simulation environment
-        stats (pd.DataFrame): Statistics tracking frame with columns:
-            - time: Current simulation time
-            - vehicle_id: Unique identifier for each vehicle
-            - origin: Starting intersection
-            - destination: Target intersection
-            - lane: Current lane number (0-4)
-            - block: Current block position in lane
-            - arrival_time: Time vehicle arrived at current position
-            - stuck_time: Time vehicle has been stuck
-            - active: Whether vehicle is still in simulation
-        graph (DataLoader.Graph_Generator): Network representation
-        vehicles (dict): Dictionary of active vehicles
-        demand (pd.DataFrame): Vehicle demand schedule
-        
-    Example:
-        >>> # Initialize simulation with a 500m dedicated lane and change zone
-        >>> sim = Clock(
-        ...     network_file='network.csv',
-        ...     dedicated_lane_length=500,
-        ...     lane_changing_zone_length=500
-        ... )
-        >>> # Load vehicle demand and run for 60 time steps
-        >>> sim.generate_vehicles('demand.csv')
-        >>> sim.run()
-    """
-    
     def __init__(self, network_files: list, output_directory: str, dedicated_lane_length: int, 
                  lane_changing_zone_length: int, each_block_length: int = 100):
         """Initialize the traffic simulation environment.
@@ -130,9 +88,8 @@ class Clock:
             time = self.env.now
             if not self.demand.empty:
                 queue = self.demand.iloc[0]
-
                 # Generate new vehicles at their departure time
-                if abs(time - int(queue["departure"])) < 0.01:
+                if time  >= float(queue["departure"]):
                     self.vehicles[str(int(queue["ID"]))] = Players.Vehicle(
                         env=self.env,
                         id=str(int(queue["ID"])),
@@ -147,13 +104,8 @@ class Clock:
                     print(f"[INFO] We are adding a new car into the system at time {time}.")
             
             # Every 5 time steps: update lights and process vehicles
-            if time % 5 == 0:
-                # Update lights for all intersections
-                for node in self.graph.graph.nodes:
-                    intersection = self.graph.graph.nodes[node]["intersection"]
-                    intersection.update_lights(self.stats)
-                    # print(f"[INFO] Traffic lights at intersection {node} have been updated at time {time}.")
-                
+            if time % 5 == 0:            
+                print(f"[INFO] Simulation time: {time}")
                 # Sort vehicles by waiting time
                 vehicles_id = self._sort_vehicles() if self.vehicles else []
                 print(f"[INFO] There are {len(vehicles_id)} sorted vehicles in the system.")
@@ -161,6 +113,11 @@ class Clock:
                 for id in vehicles_id:
                     self.vehicles[id].process()
             
+                # Update lights for all intersections
+                for node in self.graph.graph.nodes:
+                    intersection = self.graph.graph.nodes[node]["intersection"]
+                    intersection.update_lights(self.stats)
+                    # print(f"[INFO] Traffic lights at intersection {node} have been updated at time {time}.")
             yield self.env.timeout(1)
             
     def run(self, until: int = 60) -> None:
